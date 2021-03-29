@@ -1,13 +1,13 @@
 /*			Actions
  *			moveOut	getInGoal moveGlobe moveStar goalViaStar winRoad safety kill move noMoves
- *		home
+ *		home	Q(1,1)	
  *		goal
  *		globe
  * States *4	star
- *		winRoad
+ *		winRoad	
  *		satefy
  *		freeSpace
- *		danger
+ *		danger	
  * */
 
 /*
@@ -25,13 +25,13 @@ const int actions = 10;
 class QTable{
 
 	public:
-		int getMaxQ(int state){
+		int getMaxQAction(int state){
 			stateVisited[state] +=1;	//Log how many times a state is selected
 			int maxVal = -1000;
 			int actionIndex = -1;
 			std::vector<int> indexes;
 			for(int i = 0;i<actions;i++){
-				if(QTable[state][i] == maxVal){
+				if(QTable[state][i] == maxVal){	//This is an error
 					indexes.push_back(i);
 				}
 				if(QTable[state][i] > maxVal){
@@ -49,6 +49,9 @@ class QTable{
 		}
 		void setQVal(int state, int action, double val){
 			QTable[state][action] = val;
+		}
+		double getQVal(int state, int action){
+			return QTable[state][action];
 		}
 		void saveQ(){
 			//Save Qtable to file
