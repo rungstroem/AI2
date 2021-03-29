@@ -1,11 +1,10 @@
-/*			Actions
- *			moveOut	getInGoal moveGlobe moveStar goalViaStar winRoad safety kill move noMoves
- *		home	Q(1,1)	
+/*							Actions
+ *				moveOut	moveSafe moveFree moveWinRoad moveGoal moveStar
+ *		home	
  *		goal
- *		globe
- * States *4	star
+ * 		star
  *		winRoad	
- *		satefy
+ *		safety
  *		freeSpace
  *		danger	
  * */
@@ -19,8 +18,8 @@
 #include <vector>
 #include <fstream>
 
-const int states = 32;
-const int actions = 10;
+const int states = 28;
+const int actions = 6;
 
 class QTable{
 
@@ -54,7 +53,20 @@ class QTable{
 			return QTable[state][action];
 		}
 		void saveQ(){
-			//Save Qtable to file
+		/*	//Save Qtable to file
+			ofstream qtable;
+			qtable.open("qtable.txt");
+			if(qtable.is_open()){
+				for(int i=0; i<states; i++){
+					for(int j=0; j<actions; j++){
+						qtable << QTable[i][j] << ",";
+					}
+					qtable << "\n";
+				}
+				qtable.close();
+				return 0;
+			}
+			return -1;*/
 		}
 		void restoreQ(){
 			//Load Qtable from file
