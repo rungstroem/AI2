@@ -4,6 +4,8 @@
 #include "random"
 #include "iplayer.h"
 #include "QTable.h"
+#include <iostream>
+#include <fstream>
 
 enum{
 	home,
@@ -28,10 +30,11 @@ class myQPlayer : public iplayer{
 
 	private:
 		QTable qtable;
-		double alpha = 0.1;	// Learning rate
+		double alpha = 0.5;	// Learning rate
 		double gamma = 0.9;	// Discount factor
-		double eps = 0.1;	// Exploration-rate
-		
+		double eps = 0.3;	// Exploration-rate
+		int expInt = 30;
+
 		int numOfStates = 7;
 
 		int diceVal = 0;
@@ -48,10 +51,34 @@ class myQPlayer : public iplayer{
 		int maxQIndex = 0;
 		double reward = 0.0;
 		double QVal = 0.0;
+		
+		double rewardAccumulated = 0.0;
 
+		std::random_device rd;
+		std::mt19937 genRandInt;
 	public:
 		myQPlayer(){
-			// Nothing to initialize yet
+			genRandInt = std::mt19937(rd());
+		}
+		void saveQ(){
+			// save Qtable to file
+			qtable.saveQ();
+		}
+		void restoreQ(){
+			qtable.restoreQ();
+		}
+		void saveReward(){
+			std::ofstream fout;
+			std::ifstream fin;
+			fin.open("AccumulatedReward.csv");
+			fout.open("AccumulatedReward.csv", std::ios::app);
+			if(fin.is_open()){
+				fout << rewardAccumulated << ",\n";	// Writing the reward to the file
+			}
+			fin.close();
+			fout.close();
+			// Reset acculumated reward
+			rewardAccumulated = 0.0;
 		}
 	private:
 		// dice - contains the dice roll, just use it as a read only variable
@@ -76,7 +103,7 @@ class myQPlayer : public iplayer{
 			}
 			// Get the Q value for every pieces' state action pair
 			for(int i=0; i<4; i++){
-				pieceQVal[i] = qtable.getQVal(pieceState[i], pieceAction[i]);
+				pieceQVal[i] = qtable.getQVal(pieceState[i], pieceAction[i]);	//Error is here! pieceState[1] is 1143492093...
 			}
 			// Get the index of the maximum QVal between all pieces Q values
 			indexQMax = get_maxQIndex();
@@ -90,8 +117,10 @@ class myQPlayer : public iplayer{
 			newState = get_state(newPos, indexRandom);
 			// Get max Q index ( basically the action with highest Q value)
 			maxQIndex = qtable.getMaxQAction(newState);
+			
 			// Calculate reward
 			reward = get_reward(newState, indexRandom, newPos);
+			rewardAccumulated += reward;
 			// Calculate Q val
 			QVal = pieceQVal[indexRandom] + alpha*(reward +gamma*qtable.getQVal(newState, maxQIndex) - pieceQVal[indexRandom]);
 			// Update QVal
@@ -103,9 +132,9 @@ class myQPlayer : public iplayer{
 			send_them_home();
 			
 			// Update board
-			for(int i=0; i<16; i++){
-				position[i] = piecePos[i];
-			}
+			//for(int i=0; i<16; i++){
+			//	position[i] = piecePos[i];
+			//}
 			
 			// Best quess so far...
 			return indexRandom;
@@ -236,12 +265,18 @@ class myQPlayer : public iplayer{
 			return index;
 		}
 		int random_exploration(int index){
-			int indexRandom = index;
-			double exploration = 0;
+			/*int indexRandom = index;
+			double exploration = 0.0;
 			srand(time(NULL));
 			exploration = rand()%100;
 			if(exploration > eps){
 				indexRandom = rand()%4;
+			}*/
+			int indexRandom = index;
+			std::uniform_int_distribution<int> distribution = std::uniform_int_distribution<int>(0,100);
+			if(distribution(genRandInt) > expInt){
+				std::uniform_int_distribution<int> distribution2 = std::uniform_int_distribution<int>(0,4-1);
+				indexRandom = distribution2(genRandInt);
 			}
 			return indexRandom;
 		}

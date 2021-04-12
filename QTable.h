@@ -16,6 +16,8 @@
 
 #include <time.h>
 #include <vector>
+#include <cstdlib>
+#include <iostream>
 #include <fstream>
 
 const int states = 28;
@@ -30,48 +32,75 @@ class QTable{
 			int actionIndex = -1;
 			std::vector<int> indexes;
 			for(int i = 0;i<actions;i++){
-				if(QTable[state][i] == maxVal){	//This is an error
+				if(Qtable[state][i] == maxVal){	//This is an error
 					indexes.push_back(i);
 				}
-				if(QTable[state][i] > maxVal){
-					maxVal = QTable[state][i];
+				if(Qtable[state][i] > maxVal){
+					maxVal = Qtable[state][i];
 					actionIndex = i;
 				}
 			}
 			if(indexes.size() > 1){
 				int i = 0;
-				srand(time(0));
-				i = rand()%indexes.size();
+				std::srand(time(0));
+				i = std::rand()%indexes.size();
 				actionIndex = indexes[i];
 			}
 			return(actionIndex);
 		}
 		void setQVal(int state, int action, double val){
-			QTable[state][action] = val;
+			Qtable[state][action] = val;
 		}
 		double getQVal(int state, int action){
-			return QTable[state][action];
+			return Qtable[state][action];
 		}
 		void saveQ(){
-		/*	//Save Qtable to file
-			ofstream qtable;
-			qtable.open("qtable.txt");
-			if(qtable.is_open()){
+			std::ofstream table;
+			table.open("qtable.csv");
+			if(table.is_open()){
 				for(int i=0; i<states; i++){
 					for(int j=0; j<actions; j++){
-						qtable << QTable[i][j] << ",";
+						table << Qtable[i][j] << ",";
 					}
-					qtable << "\n";
+					table << "\n";
 				}
-				qtable.close();
-				return 0;
 			}
-			return -1;*/
+			table.close();
+			std::ofstream stv;
+			stv.open("StatesVisited.csv");
+			if(stv.is_open()){
+				for(int i=0; i<states; i++){
+					stv << stateVisited[i] << ',';
+				}
+				stv.close();
+			}
 		}
 		void restoreQ(){
-			//Load Qtable from file
+			std::string line;
+			std::string num;
+			double number = 0.0;
+			int k = 0;
+			int l = 0;
+			std::ifstream table("qtable.csv");
+			if(table.is_open()){
+				while(getline(table, line)){
+					l = 0;
+					for(int i=0; i<line.length(); i++){
+						if(line[i] == ','){
+							number = strtod(num.c_str(), NULL);
+							Qtable[k][l] = number;
+							l++;
+							num.clear();
+							continue;
+						}
+						num.push_back(line[i]);
+					}
+					k++;
+				}
+				table.close();
+			}
 		}
 	private:
-		double QTable[states][actions] = {0};
+		double Qtable[states][actions] = {0};
 		int stateVisited[states] = {0};
 };
