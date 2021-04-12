@@ -1,5 +1,5 @@
 /*							Actions
- *				moveOut	moveSafe moveFree moveWinRoad moveGoal moveStar
+ *				moveOut	moveSafe moveFree moveWinRoad moveGoal moveStar moveGoalStar
  *		home	
  *		goal
  * 		star
@@ -21,7 +21,7 @@
 #include <fstream>
 
 const int states = 28;
-const int actions = 6;
+const int actions = 7;
 
 class QTable{
 

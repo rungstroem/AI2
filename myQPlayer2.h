@@ -23,7 +23,8 @@ enum{
 	moveFree,
 	moveWinRoad,
 	moveGoal,
-	moveStar
+	moveStar,
+	moveGoalStar
 };
 
 class myQPlayer : public iplayer{
@@ -60,6 +61,7 @@ class myQPlayer : public iplayer{
 		double oldQVal = 0.0;
 		std::random_device rd;
 		std::mt19937 genRandInt;
+
 	public:
 		myQPlayer(){
 			genRandInt = std::mt19937(rd());
@@ -128,10 +130,18 @@ class myQPlayer : public iplayer{
 
 			// Calculate action from my pieces positions and the dice value
 			for(int i=0; i<4; i++){
+				if(pieceState[i] == 99){	//If a piece is on the goal, then it should not do anything anymore
+					pieceAction[i] == -1;
+					continue;
+				}
 				pieceAction[i] = get_action(diceVal, piecePos[i]);
 			}
 			// Get the Q value for every pieces' state action pair
 			for(int i=0; i<4; i++){
+				if(pieceAction[i] == -1){	//Set the q val for a piece at goal low, so it won't be selected as index to move
+					pieceQVal[i] == -1000;
+					continue;
+				}
 				pieceQVal[i] = qtable.getQVal(pieceState[i], pieceAction[i]);
 			}
 			// Get the index of the maximum QVal between all pieces Q values
@@ -168,10 +178,13 @@ class myQPlayer : public iplayer{
 			if(is_star(newPos)){
 				action = moveStar;
 			}
+			if(is_goal_star(newPos)){
+				action = moveGoalStar;
+			}
 			return action;
 
 		}
-		double get_reward(int state, int piece, int newPos){
+		double get_reward(int state, int piece, int newPos){	//The reward function may not work properly
 			double accumulatedReward = 0.0;
 			if(kill(newPos) == true){
 				accumulatedReward += 2.0;
@@ -179,9 +192,12 @@ class myQPlayer : public iplayer{
 				accumulatedReward += 3.0;
 			}else if(die(newPos) == true){
 				accumulatedReward -= 10.0;
+			}else if(is_goal_star(newPos) == true){
+				accumulatedReward += 10;
+				return accumulatedReward;
 			}
 			if(state == home +numOfStates*piece) return -1.0;
-			if(state == goal +numOfStates*piece) return 10.0;
+			if(state == goal +numOfStates*piece) return 100.0;
 			if(state == winRoad +numOfStates*piece) return 5.0;
 			
 			if(state == safety +numOfStates*piece) return 2.0 + accumulatedReward;
@@ -195,7 +211,7 @@ class myQPlayer : public iplayer{
 			if(pos == -1){
 				return home +numOfStates*piece;	//If piece is home then nothing can get to it
 			}
-			if(pos = 99){
+			if(pos == 99){
 				state = goal;
 			}
 			if(is_star(pos)){
@@ -271,18 +287,18 @@ class myQPlayer : public iplayer{
 			return index;
 		}
 		int random_exploration(int index){
-			/*int indexRandom = index;
-			double exploration = 0.0;
-			srand(time(NULL));
-			exploration = rand()%100;
-			if(exploration > eps){
-				indexRandom = rand()%4;
-			}*/
 			int indexRandom = index;
 			std::uniform_int_distribution<int> distribution = std::uniform_int_distribution<int>(0,100);
 			if(distribution(genRandInt) > expInt){
 				std::uniform_int_distribution<int> distribution2 = std::uniform_int_distribution<int>(0,4-1);
-				indexRandom = distribution2(genRandInt);
+				while(1){	//This loop is made so the index of a piece on goal is not selected
+					indexRandom = distribution2(genRandInt);
+					if(pieceState[indexRandom] == 99){
+						continue;
+					}else{
+						break;
+					}
+				}
 			}
 			return indexRandom;
 		}
@@ -377,6 +393,12 @@ class myQPlayer : public iplayer{
 				default:
 					return false;
 			}
+		}
+		bool is_goal_star(int pos){
+			if(pos == 50){
+				return true;
+			}
+			return false;
 		}
 		bool is_danger(int pos, int piece){
 			bool helper = false;
