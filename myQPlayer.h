@@ -6,6 +6,7 @@
 #include "QTable.h"
 #include <iostream>
 #include <fstream>
+#include <math.h>
 
 enum{
 	home,
@@ -23,7 +24,8 @@ enum{
 	moveFree,
 	moveWinRoad,
 	moveGoal,
-	moveStar
+	moveStar,
+	moveGoalStar
 };
 
 class myQPlayer : public iplayer{
@@ -31,9 +33,11 @@ class myQPlayer : public iplayer{
 	private:
 		QTable qtable;
 		double alpha = 0.5;	// Learning rate
-		double gamma = 0.9;	// Discount factor
-		double eps = 0.3;	// Exploration-rate
-		int expInt = 30;
+		double alpha0 = 1;
+		double alpha1 = 0;
+		double gamma = 0.1;	// Discount factor
+		double eps = 0.7;	// Exploration-rate
+		int expInt = 70;
 
 		int numOfStates = 7;
 
@@ -53,9 +57,17 @@ class myQPlayer : public iplayer{
 		double QVal = 0.0;
 		
 		double rewardAccumulated = 0.0;
+		double iterations = 0;
 
+		int oldIndex = -1;
+		int oldState = -1;
+		int oldAction = -1;
+		int oldPos = -1;
+
+		double oldQVal = 0.0;
 		std::random_device rd;
 		std::mt19937 genRandInt;
+
 	public:
 		myQPlayer(){
 			genRandInt = std::mt19937(rd());
@@ -73,12 +85,42 @@ class myQPlayer : public iplayer{
 			fin.open("AccumulatedReward.csv");
 			fout.open("AccumulatedReward.csv", std::ios::app);
 			if(fin.is_open()){
+				//fout << rewardAccumulated/iterations << ",\n";	// Writing the reward to the file
 				fout << rewardAccumulated << ",\n";	// Writing the reward to the file
 			}
 			fin.close();
 			fout.close();
 			// Reset acculumated reward
 			rewardAccumulated = 0.0;
+			iterations = 0;
+			return;
+		}
+		void set_learning(bool val){
+			if(val == true){
+				alpha = 0.5;
+				eps = 0.7;
+				expInt = 70;
+			}
+			if(val == false){
+				alpha = 0;
+				eps = 101;
+				expInt = 101;
+			}
+		}
+		void set_discount(double g){
+			gamma = g;
+		}
+		void set_learning_rate(double a){
+			alpha = a;
+		}
+		int decrease_exploration_rate(int i=0){
+			expInt = (int)((exp(-0.01*i))*100);
+			return expInt;
+		}
+		double decrease_learning_rate(int i=0){
+			alpha1 = (1/(1+0.01*(double)i))*alpha0;
+			alpha0 = alpha1;
+			return alpha1;
 		}
 	private:
 		// dice - contains the dice roll, just use it as a read only variable
@@ -86,24 +128,61 @@ class myQPlayer : public iplayer{
 		// What is the best move ? 
 		// Check for illegal moves...
 		int make_decision(){
-			// Initialize for every episode
-			diceVal = dice;
+			iterations +=1;
 
-			// Get all pieces position
+			//Get all pieces position
 			for(int i=0; i<16; i++){
 				piecePos[i] = position[i];
 			}
-			// Calculate state for all of my pieces
+			//Calculate the state for all of my pieces
 			for(int i=0; i<4; i++){
 				pieceState[i] = get_state(piecePos[i], i);
 			}
+
+			if(oldIndex == -1){
+				// Skip
+			}else{
+				//Grab the position of the piece we just moved
+				newPos = piecePos[oldIndex];
+				//Calculate that pieces new state - where does the environment place us
+				newState = pieceState[oldIndex];
+				//Calculate the reward
+				reward = get_reward(newState, oldState, oldIndex, newPos, oldPos, oldAction);
+				//rewardAccumulated = rewardAccumulated + gamma*(reward-rewardAccumulated);
+				//rewardAccumulated += reward;
+				//Send opponents home...
+				send_them_home();
+				//Get previous Q-value
+				oldQVal = qtable.getQVal(oldState, oldAction);
+				//Get max action index in new state
+				maxQIndex = qtable.getMaxQAction(newState);
+				//Calculate update val
+				QVal = oldQVal + alpha*(reward +gamma*qtable.getQVal(newState, maxQIndex)-oldQVal);
+				//Update the old state action pair in the QTable
+				qtable.setQVal(oldState, oldAction, QVal);
+
+				rewardAccumulated += QVal;
+
+			}
+			//Start a new move
+			// Initialize for every episode
+			diceVal = dice;
+
 			// Calculate action from my pieces positions and the dice value
 			for(int i=0; i<4; i++){
+				if(pieceState[i] == 99){	//If a piece is on the goal, then it should not do anything anymore
+					pieceAction[i] == -1;
+					continue;
+				}
 				pieceAction[i] = get_action(diceVal, piecePos[i]);
 			}
 			// Get the Q value for every pieces' state action pair
 			for(int i=0; i<4; i++){
-				pieceQVal[i] = qtable.getQVal(pieceState[i], pieceAction[i]);	//Error is here! pieceState[1] is 1143492093...
+				if(pieceAction[i] == -1){	//Set the q val for a piece at goal low, so it won't be selected as index to move
+					pieceQVal[i] == -1000;
+					continue;
+				}
+				pieceQVal[i] = qtable.getQVal(pieceState[i], pieceAction[i]);
 			}
 			// Get the index of the maximum QVal between all pieces Q values
 			indexQMax = get_maxQIndex();
@@ -111,34 +190,12 @@ class myQPlayer : public iplayer{
 			indexRandom = random_exploration(indexQMax);
 			// Index is the piece we select to move
 			
-			// Calculate the new position for the selected piece, and account for jump with star
-			newPos = get_new_pos(piecePos[indexRandom], diceVal);
-			// Calculate the new state resulting from the action
-			newState = get_state(newPos, indexRandom);
-			// Get max Q index ( basically the action with highest Q value)
-			maxQIndex = qtable.getMaxQAction(newState);
-			
-			// Calculate reward
-			reward = get_reward(newState, indexRandom, newPos);
-			rewardAccumulated += reward;
-			// Calculate Q val
-			QVal = pieceQVal[indexRandom] + alpha*(reward +gamma*qtable.getQVal(newState, maxQIndex) - pieceQVal[indexRandom]);
-			// Update QVal
-			qtable.setQVal(pieceState[indexRandom], pieceAction[indexRandom], QVal);
-			
-			// Update selected pieces' position
-			piecePos[indexRandom] = newPos;
-			// Update opponent pieces position
-			send_them_home();
-			
-			// Update board
-			//for(int i=0; i<16; i++){
-			//	position[i] = piecePos[i];
-			//}
-			
-			// Best quess so far...
-			return indexRandom;
+			oldIndex = indexRandom;
+			oldAction = pieceAction[oldIndex];
+			oldState = pieceState[oldIndex];
+			oldPos = piecePos[oldIndex];
 
+			return indexRandom;
 		}
 		int get_action(int diceV, int piece){
 			int pos = piecePos[piece];
@@ -156,16 +213,110 @@ class myQPlayer : public iplayer{
 			if(is_winRoad(newPos)){
 				action = moveWinRoad;
 			}
-			if(newPos > 56){
+			if(newPos > 55){	// Maybe the newPos value has to be exactly 56 to move to the goal??
 				action = moveGoal;
 			}
 			if(is_star(newPos)){
 				action = moveStar;
 			}
+			if(is_goal_star(newPos)){
+				action = moveGoalStar;
+			}
 			return action;
 
 		}
-		double get_reward(int state, int piece, int newPos){
+		double get_reward(int newState, int oldState, int piece, int newPos, int oldPos, int oldAction){	//The reward function may not work properly
+			int os = numOfStates*piece;
+			// This seems to work better than the 2 version below... 
+			if(newPos > oldPos){
+				return 1;
+			}
+			if(newState == goal +os && (oldAction == moveGoal || oldAction == moveGoalStar) && oldState != goal){
+				return 100;
+			}
+			return -1;
+			
+			/*
+			// 3'rd version
+			if(newState == home +os && oldState == home +os){
+				return -1;
+			}
+			if(newState == home +os && oldState != home +os){
+				return -10;	// Piece was killed
+			}
+			if(newState == goal +os && oldAction != moveGoal && oldAction != moveGoalStar){
+				return 0;
+			}
+			if(newState == goal +os && (oldAction == moveGoal || oldAction == moveGoalStar)){
+				return 100;
+			}
+			if(newState == winRoad && oldState != winRoad){
+				return 5;
+			}
+			if(newState == winRoad && oldState == winRoad){
+				return -1;	// Keep moving
+			}
+			if(is_goal_star(newPos) == true){
+				return 10;
+			}
+			if(newState == freeSpace +os && oldState == danger +os && oldAction == moveFree){
+				return 1;
+			}
+			if(newState == safety +os && oldState == danger +os && oldAction == moveSafe){
+				return 4;
+			}
+			if(newState == safety +os){
+				return 2;
+			}
+			if(newState == freeSpace +os){
+				return -1;
+			}
+			if(newState == star +os && oldAction == moveStar){
+				return 3;
+			}
+			if(newState == danger +os && oldState != danger +os){
+				return -3;
+			}
+			if(newState == danger +os && oldState == danger +os){
+				return -2;
+			}
+			return -1;
+			*/	
+			/* 2'nd version
+			if(newState == home+numOfStates*piece && oldState == home+numOfStates*piece){
+				return -1;
+			}
+			if(newState == home+numOfStates*piece && oldState != home+numOfStates*piece){
+				//The piece has been send home
+				return -10;
+			}
+			if(newState == goal+numOfStates*piece && oldState != goal+numOfStates*piece){
+				return 100;
+			}
+			if(kill(newPos) == true){
+				return 2;
+			}
+			if(kill_on_home(newPos) == true){
+				return 3;
+			}
+			if(newState == winRoad+numOfStates*piece){
+				return 5;
+			}
+			if(newState == danger+numOfStates*piece && is_goal_star(newPos) == false){
+				return -2;
+			}
+			if(newState == freeSpace+numOfStates*piece && is_goal_star(newPos) == false){
+				return -1;
+			}
+			if(newState == safety+numOfStates*piece && is_goal_star(newPos) == false){
+				return 2;
+			}
+			if(is_goal_star(newPos) == true){
+				return 5;
+			}
+			return 0.0;
+			*/
+			/* 1'st version
 			double accumulatedReward = 0.0;
 			if(kill(newPos) == true){
 				accumulatedReward += 2.0;
@@ -173,15 +324,18 @@ class myQPlayer : public iplayer{
 				accumulatedReward += 3.0;
 			}else if(die(newPos) == true){
 				accumulatedReward -= 10.0;
+			}else if(is_goal_star(newPos) == true){
+				accumulatedReward += 10;
+				return accumulatedReward;
 			}
 			if(state == home +numOfStates*piece) return -1.0;
-			if(state == goal +numOfStates*piece) return 10.0;
+			if(state == goal +numOfStates*piece) return 100.0;
 			if(state == winRoad +numOfStates*piece) return 5.0;
 			
 			if(state == safety +numOfStates*piece) return 2.0 + accumulatedReward;
 			if(state == freeSpace +numOfStates*piece) return 1.0 + accumulatedReward;
 			if(state == danger +numOfStates*piece) return -1.0 + accumulatedReward;
-			return 0.0;
+			return 0.0;*/
 		}
 		int get_state(int pos, int piece){
 			// Translates piece position to state type. 
@@ -189,7 +343,7 @@ class myQPlayer : public iplayer{
 			if(pos == -1){
 				return home +numOfStates*piece;	//If piece is home then nothing can get to it
 			}
-			if(pos = 99){
+			if(pos == 99 || pos == 56){
 				state = goal;
 			}
 			if(is_star(pos)){
@@ -265,18 +419,18 @@ class myQPlayer : public iplayer{
 			return index;
 		}
 		int random_exploration(int index){
-			/*int indexRandom = index;
-			double exploration = 0.0;
-			srand(time(NULL));
-			exploration = rand()%100;
-			if(exploration > eps){
-				indexRandom = rand()%4;
-			}*/
 			int indexRandom = index;
 			std::uniform_int_distribution<int> distribution = std::uniform_int_distribution<int>(0,100);
 			if(distribution(genRandInt) > expInt){
 				std::uniform_int_distribution<int> distribution2 = std::uniform_int_distribution<int>(0,4-1);
-				indexRandom = distribution2(genRandInt);
+				while(1){	//This loop is made so the index of a piece on goal is not selected
+					indexRandom = distribution2(genRandInt);
+					if(pieceState[indexRandom] == 99){
+						continue;
+					}else{
+						break;
+					}
+				}
 			}
 			return indexRandom;
 		}
@@ -371,6 +525,12 @@ class myQPlayer : public iplayer{
 				default:
 					return false;
 			}
+		}
+		bool is_goal_star(int pos){
+			if(pos == 50){
+				return true;
+			}
+			return false;
 		}
 		bool is_danger(int pos, int piece){
 			bool helper = false;
